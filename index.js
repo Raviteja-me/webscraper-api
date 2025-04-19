@@ -1,17 +1,27 @@
 const express = require("express");
-const puppeteer = require("puppeteer");
+const puppeteer = require("puppeteer-extra");
+const StealthPlugin = require("puppeteer-extra-plugin-stealth");
+
+puppeteer.use(StealthPlugin());
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8080;
 
 app.get("/scrape", async (req, res) => {
     const url = req.query.url;
     if (!url) return res.status(400).json({ error: "URL is required" });
 
+    let browser;
     try {
-        const browser = await puppeteer.launch({
+        browser = await puppeteer.launch({
             headless: "new",
-            args: ["--no-sandbox", "--disable-setuid-sandbox"]
+            args: [
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-gpu",
+                "--disable-blink-features=AutomationControlled"
+            ],
+            defaultViewport: null
         });
 
         const page = await browser.newPage();
@@ -19,40 +29,23 @@ app.get("/scrape", async (req, res) => {
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
         );
 
-        // Wait for full page load
+        // Add a small random delay before navigating (fixed waitForTimeout issue)
+        await new Promise(resolve => setTimeout(resolve, Math.floor(Math.random() * 5000) + 2000));
+
         await page.goto(url, { waitUntil: "networkidle2", timeout: 60000 });
 
-        // Wait for at least some content to appear
         await page.waitForSelector("p, div", { timeout: 5000 }).catch(() => null);
 
-        // Extract text from body and all iframes
-        const pageContent = await page.evaluate(async () => {
-            function getTextFromFrame(frame) {
-                return frame.innerText.replace(/\n\s*\n/g, "\n").trim();
-            }
-
-            let content = getTextFromFrame(document.body);
-
-            // Extract text from iframes
-            const iframes = document.querySelectorAll("iframe");
-            for (let iframe of iframes) {
-                try {
-                    const frameDoc = iframe.contentDocument || iframe.contentWindow?.document;
-                    if (frameDoc) {
-                        content += "\n\n" + getTextFromFrame(frameDoc.body);
-                    }
-                } catch (e) { /* Ignore cross-origin errors */ }
-            }
-
-            return content;
+        const pageContent = await page.evaluate(() => {
+            return document.body.innerText;
         });
-
-        await browser.close();
 
         res.json({ content: pageContent || "No readable content found" });
 
     } catch (error) {
         res.status(500).json({ error: error.message });
+    } finally {
+        if (browser) await browser.close();
     }
 });
 
