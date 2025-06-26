@@ -1,11 +1,25 @@
 const express = require("express");
 const puppeteer = require("puppeteer-extra");
 const StealthPlugin = require("puppeteer-extra-plugin-stealth");
+const cors = require('cors');
 
 puppeteer.use(StealthPlugin());
 
 const app = express();
 const PORT = process.env.PORT || 8080;
+
+// Allow only your frontend domain and local development
+app.use(cors({
+  origin: [
+    'https://lazyjobseeker.com',
+    'http://localhost:3000',
+    'http://localhost:8080',
+    'http://127.0.0.1:3000',
+    'http://127.0.0.1:8080'
+  ],
+  methods: ['GET', 'POST', 'OPTIONS'],
+  credentials: true
+}));
 
 app.get("/scrape", async (req, res) => {
     const url = req.query.url;
